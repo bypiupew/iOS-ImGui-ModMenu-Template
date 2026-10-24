@@ -28,7 +28,7 @@ jobs:
       - name: Build
         run: |
           export THEOS=~/theos
-          make package FINALPACKAGE=1
+          make package FINALPACKAGE=1 CFLAGS="-Wno-error -Wno-nontrivial-memcall -Wno-module-import-in-extern-c" CXXFLAGS="-Wno-error -Wno-nontrivial-memcall -Wno-module-import-in-extern-c"
 
       - name: Upload
         uses: actions/upload-artifact@v4
