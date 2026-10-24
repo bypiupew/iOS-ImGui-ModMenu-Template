@@ -4,11 +4,6 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      reason:
-        description: 'Build reason'
-        required: false
-        default: 'manual build'
 
 jobs:
   build:
@@ -23,17 +18,17 @@ jobs:
       - name: Setup Theos
         run: |
           brew install ldid xz
-          git clone --recursive https://github.com/theos/theos.git ~/theos
-          git clone https://github.com/theos/sdks.git ~/theos/sdks
-        env:
-          THEOS: ~/theos
+          if [ ! -d ~/theos ]; then
+            git clone --recursive https://github.com/theos/theos.git ~/theos
+          fi
+          if [ ! -d ~/theos/sdks ]; then
+            git clone https://github.com/theos/sdks.git ~/theos/sdks
+          fi
 
       - name: Build
         run: |
           export THEOS=~/theos
           make package FINALPACKAGE=1
-        env:
-          THEOS: ~/theos
 
       - name: Upload
         uses: actions/upload-artifact@v4
