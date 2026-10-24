@@ -1,0 +1,31 @@
+name: Build ModMenu
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Theos
+        run: |
+          brew install ldid
+          git clone --recursive https://github.com/theos/theos.git $THEOS
+          git clone https://github.com/theos/sdks.git $THEOS/sdks
+        env:
+          THEOS: /opt/theos
+
+      - name: Build
+        run: |
+          export THEOS=/opt/theos
+          make package
+          
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ModMenu
+          path: packages/*.deb
