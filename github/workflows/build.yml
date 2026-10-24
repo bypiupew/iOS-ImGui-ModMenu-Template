@@ -1,0 +1,42 @@
+name: Build ModMenu
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Build reason'
+        required: false
+        default: 'manual build'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Setup Theos
+        run: |
+          brew install ldid xz
+          git clone --recursive https://github.com/theos/theos.git ~/theos
+          git clone https://github.com/theos/sdks.git ~/theos/sdks
+        env:
+          THEOS: ~/theos
+
+      - name: Build
+        run: |
+          export THEOS=~/theos
+          make package FINALPACKAGE=1
+        env:
+          THEOS: ~/theos
+
+      - name: Upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: ModMenu-Build
+          path: packages/
