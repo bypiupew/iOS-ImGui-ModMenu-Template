@@ -190,7 +190,7 @@ static bool MenDeal = false;
                 ImVec2 size = window->Size;
                 CGRect windowRect = CGRectMake(pos.x, pos.y, size.x, size.y);
                 if (CGRectContainsPoint(windowRect, point)) {
-                    return [super hitTest:point withEvent:event]; // Forward interaction to ImGui
+                    return [self.view hitTest:point withEvent:event]; // Forward interaction to ImGui
                 }
             }
         }
