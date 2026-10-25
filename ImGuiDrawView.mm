@@ -81,6 +81,12 @@ static bool WorldToScreen(Vector3 pos, Vector2 &screen, float *vm, float w, floa
 void (*huy)(void *instance);
 void _huy(void *instance) { huy(instance); }
 
+- (void)handleMenuToggle:(UITapGestureRecognizer *)gesture {
+    if (gesture.state == UIGestureRecognizerStateRecognized) {
+        MenDeal = !MenDeal;
+        self.view.userInteractionEnabled = MenDeal;
+    }
+}
 static bool MenDeal = true;
 
 - (instancetype)initWithNibName:(nullable NSString *)nibNameOrNil bundle:(nullable NSBundle *)nibBundleOrNil
@@ -105,18 +111,43 @@ static bool MenDeal = true;
 - (MTKView *)mtkView { return (MTKView *)self.view; }
 
 - (void)loadView {
-    CGFloat w = [UIApplication sharedApplication].windows[0].rootViewController.view.frame.size.width;
-    CGFloat h = [UIApplication sharedApplication].windows[0].rootViewController.view.frame.size.height;
-    self.view = [[MTKView alloc] initWithFrame:CGRectMake(0, 0, w, h)];
+    CGRect frame = UIScreen.mainScreen.bounds;
+
+    MTKView *view =
+        [[MTKView alloc] initWithFrame:frame
+                                device:MTLCreateSystemDefaultDevice()];
+
+    view.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth |
+        UIViewAutoresizingFlexibleHeight;
+
+    self.view = view;
 }
 
-- (void)viewDidLoad {
+-- (void)viewDidLoad {
     [super viewDidLoad];
+
     self.mtkView.device = self.device;
     self.mtkView.delegate = self;
-    self.mtkView.clearColor = MTLClearColorMake(0, 0, 0, 0);
-    self.mtkView.backgroundColor = [UIColor colorWithRed:0 green:0 blue:0 alpha:0];
-    self.mtkView.clipsToBounds = YES;
+    self.mtkView.clearColor =
+        MTLClearColorMake(0, 0, 0, 0);
+    self.mtkView.backgroundColor = UIColor.clearColor;
+    self.mtkView.opaque = NO;
+    self.mtkView.userInteractionEnabled = YES;
+    self.mtkView.paused = NO;
+    self.mtkView.enableSetNeedsDisplay = NO;
+    self.mtkView.framebufferOnly = YES;
+
+    UITapGestureRecognizer *toggle =
+        [[UITapGestureRecognizer alloc]
+            initWithTarget:self
+            action:@selector(handleMenuToggle:)];
+
+    toggle.numberOfTapsRequired = 2;
+    toggle.numberOfTouchesRequired = 3;
+    toggle.cancelsTouchesInView = NO;
+
+    [self.mtkView addGestureRecognizer:toggle];
 }
 
 - (void)updateIOWithTouchEvent:(UIEvent *)event {
@@ -142,6 +173,30 @@ static bool MenDeal = true;
 
 - (void)drawInMTKView:(MTKView*)view
 {
+    // STEP 4: Debug — confirm Metal rendering is running
+    static BOOL logged = NO;
+
+    if (!logged) {
+        NSLog(@"[ModMenu] Metal rendering started");
+        logged = YES;
+    }
+
+    // Your original code continues below
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize.x = view.bounds.size.width;
+    io.DisplaySize.y = view.bounds.size.height;
+
+    CGFloat framebufferScale =
+        view.window.screen.scale ?: UIScreen.mainScreen.scale;
+
+    io.DisplayFramebufferScale =
+        ImVec2(framebufferScale, framebufferScale);
+
+    io.DeltaTime =
+        1.0f / float(view.preferredFramesPerSecond ?: 120);
+
+    id<MTLCommandBuffer> commandBuffer =
+        [self.commandQueue commandBuffer];
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize.x = view.bounds.size.width;
     io.DisplaySize.y = view.bounds.size.height;
