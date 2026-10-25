@@ -20,7 +20,7 @@
 #define kScale  [UIScreen mainScreen].scale
 
 // ═══════════════════════════════════════════════════════
-//  OFFSET MAP — MyBattleRoyale (client binary)
+//  OFFSET MAP — Ros Legacy (client binary)
 // ═══════════════════════════════════════════════════════
 #define OFS_VIEWMATRIX      0x1ED79B0
 #define OFS_LOCALPLAYER     0x20E435C
