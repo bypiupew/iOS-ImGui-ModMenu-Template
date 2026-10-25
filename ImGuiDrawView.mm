@@ -1,14 +1,17 @@
-
 #import <Metal/Metal.h>
 #import <MetalKit/MetalKit.h>
 #import <Foundation/Foundation.h>
-//Imgui library
+#import <UIKit/UIKit.h>
+
+// Imgui library
 #import "Esp/CaptainHook.h"
 #import "Esp/ImGuiDrawView.h"
 #import "IMGUI/imgui.h"
+#import "IMGUI/imgui_internal.h"
 #import "IMGUI/imgui_impl_metal.h"
 #import "IMGUI/Honkai.h"
-//Patch library
+
+// Patch library
 #import "5Toubun/NakanoIchika.h"
 #import "5Toubun/NakanoNino.h"
 #import "5Toubun/NakanoMiku.h"
@@ -58,6 +61,11 @@ static float readFloat(uintptr_t offset) {
     return *(float *)(getBase() + offset);
 }
 
+static void PatchMemory(uintptr_t offset, uint32_t instruction) {
+    uintptr_t targetAddress = getBase() + offset;
+    DobbyCodePatch((void *)targetAddress, (uint8_t *)&instruction, sizeof(instruction));
+}
+
 static bool WorldToScreen(Vector3 pos, Vector2 &screen, float *vm, float w, float h) {
     float x  = vm[0]*pos.x + vm[4]*pos.y + vm[8]*pos.z  + vm[12];
     float y  = vm[1]*pos.x + vm[5]*pos.y + vm[9]*pos.z  + vm[13];
@@ -68,7 +76,7 @@ static bool WorldToScreen(Vector3 pos, Vector2 &screen, float *vm, float w, floa
     return true;
 }
 
-@interface ImGuiDrawView () <MTKViewDelegate>
+@interface ImGuiDrawView () <MTKViewDelegate, UIGestureRecognizerDelegate>
 @property (nonatomic, strong) id <MTLDevice> device;
 @property (nonatomic, strong) id <MTLCommandQueue> commandQueue;
 @end
@@ -78,7 +86,7 @@ static bool WorldToScreen(Vector3 pos, Vector2 &screen, float *vm, float w, floa
 void (*huy)(void *instance);
 void _huy(void *instance) { huy(instance); }
 
-static bool MenDeal = false; // hidden by default, toggle with 3-finger double tap
+static bool MenDeal = false; 
 
 - (instancetype)initWithNibName:(nullable NSString *)nibNameOrNil bundle:(nullable NSBundle *)nibBundleOrNil
 {
@@ -90,7 +98,7 @@ static bool MenDeal = false; // hidden by default, toggle with 3-finger double t
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     ImGui::StyleColorsDark();
-    ImFont* font = io.Fonts->AddFontFromMemoryCompressedTTF(
+    io.Fonts->AddFontFromMemoryCompressedTTF(
         (void*)Honkai_compressed_data, Honkai_compressed_size,
         38.0f, NULL, io.Fonts->GetGlyphRangesDefault());
     ImGui_ImplMetal_Init(_device);
@@ -101,21 +109,20 @@ static bool MenDeal = false; // hidden by default, toggle with 3-finger double t
     MenDeal = open;
 }
 
-+ (void)handleShowMenu:(UITapGestureRecognizer *)gesture {
+- (void)handleShowMenu:(UITapGestureRecognizer *)gesture {
     MenDeal = YES;
 }
 
-+ (void)handleHideMenu:(UITapGestureRecognizer *)gesture {
+- (void)handleHideMenu:(UITapGestureRecognizer *)gesture {
     MenDeal = NO;
 }
 
 - (MTKView *)mtkView { return (MTKView *)self.view; }
 
 - (void)loadView {
-    CGFloat w = [UIApplication sharedApplication].windows[0].rootViewController.view.frame.size.width;
-    CGFloat h = [UIApplication sharedApplication].windows[0].rootViewController.view.frame.size.height;
-    MTKView *mv = [[MTKView alloc] initWithFrame:CGRectMake(0, 0, w, h)];
-    mv.userInteractionEnabled = NO; // start with touches passing through
+    CGRect screenBounds = [UIScreen mainScreen].bounds;
+    MTKView *mv = [[MTKView alloc] initWithFrame:screenBounds];
+    mv.userInteractionEnabled = YES; 
     self.view = mv;
 }
 
@@ -124,21 +131,34 @@ static bool MenDeal = false; // hidden by default, toggle with 3-finger double t
     self.mtkView.device = self.device;
     self.mtkView.delegate = self;
     self.mtkView.clearColor = MTLClearColorMake(0, 0, 0, 0);
-    self.mtkView.backgroundColor = [UIColor colorWithRed:0 green:0 blue:0 alpha:0];
+    self.mtkView.backgroundColor = [UIColor clearColor];
     self.mtkView.clipsToBounds = YES;
     self.mtkView.layer.zPosition = 1000;
-    // touches pass through when menu is hidden
-    self.view.userInteractionEnabled = NO;
-    self.mtkView.userInteractionEnabled = NO;
+    
+    UITapGestureRecognizer *showTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleShowMenu:)];
+    showTap.numberOfTapsRequired = 2;
+    showTap.numberOfTouchesRequired = 3;
+    showTap.delegate = self;
+    [self.view addGestureRecognizer:showTap];
+
+    UITapGestureRecognizer *hideTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleHideMenu:)];
+    hideTap.numberOfTapsRequired = 2;
+    hideTap.numberOfTouchesRequired = 2;
+    hideTap.delegate = self;
+    [self.view addGestureRecognizer:hideTap];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    return YES;
 }
 
 #pragma mark - Touch passthrough
 
 - (void)updateIOWithTouchEvent:(UIEvent *)event
 {
-    // Only process touches when menu is visible
     if (!MenDeal) return;
     UITouch *anyTouch = event.allTouches.anyObject;
+    if (!anyTouch) return;
     CGPoint touchLocation = [anyTouch locationInView:self.view];
     ImGuiIO &io = ImGui::GetIO();
     io.MousePos = ImVec2(touchLocation.x, touchLocation.y);
@@ -156,14 +176,31 @@ static bool MenDeal = false; // hidden by default, toggle with 3-finger double t
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event{ [self updateIOWithTouchEvent:event]; }
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event    { [self updateIOWithTouchEvent:event]; }
 
-// Override hitTest so touches pass through to game when menu is closed
+// Dynamic hit testing to allow simultaneous menu usage and gameplay clicks
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-    if (!MenDeal) return nil; // pass all touches to game
-    UIView *hitView = [super hitTest:point withEvent:event];
-    return hitView;
+    if (!MenDeal) return nil; 
+
+    // Look inside ImGui context to see if touch falls inside active windows
+    ImGuiContext* g = ImGui::GetCurrentContext();
+    if (g) {
+        for (int i = 0; i < g->Windows.Size; i++) {
+            ImGuiWindow* window = g->Windows[i];
+            if (window && window->WasActive && !window->Hidden) {
+                ImVec2 pos = window->Pos;
+                ImVec2 size = window->Size;
+                CGRect windowRect = CGRectMake(pos.x, pos.y, size.x, size.y);
+                if (CGRectContainsPoint(windowRect, point)) {
+                    return [super hitTest:point withEvent:event]; // Forward interaction to ImGui
+                }
+            }
+        }
+    }
+    return nil; // Pass touch straight down to game window if outside the UI window bounds
 }
 
 #pragma mark - MTKViewDelegate
+
+- (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {}
 
 - (void)drawInMTKView:(MTKView*)view
 {
@@ -176,7 +213,6 @@ static bool MenDeal = false; // hidden by default, toggle with 3-finger double t
 
     id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
 
-    // ═══ FEATURE BOOLS ═══════════════════════════════════
     static bool esp_boxes        = false;
     static bool esp_health       = false;
     static bool esp_distance     = false;
@@ -203,12 +239,6 @@ static bool MenDeal = false; // hidden by default, toggle with 3-finger double t
     static bool misc_a_active     = false;
     static bool misc_g_active     = false;
 
-    // Update touch interactivity based on menu state
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.view.userInteractionEnabled = MenDeal ? YES : NO;
-        self.mtkView.userInteractionEnabled = MenDeal ? YES : NO;
-    });
-
     MTLRenderPassDescriptor* renderPassDescriptor = view.currentRenderPassDescriptor;
     if (renderPassDescriptor != nil)
     {
@@ -225,9 +255,6 @@ static bool MenDeal = false; // hidden by default, toggle with 3-finger double t
         CGFloat sw = view.bounds.size.width;
         CGFloat sh = view.bounds.size.height;
 
-        // ═══════════════════════════════════════════════
-        //  MOD MENU UI — only render when MenDeal = true
-        // ═══════════════════════════════════════════════
         if (MenDeal)
         {
             CGFloat wx = (sw - 420) / 2;
@@ -282,23 +309,16 @@ static bool MenDeal = false; // hidden by default, toggle with 3-finger double t
             ImGui::PopStyleColor(3);
         }
 
-        // ═══════════════════════════════════════════════
-        //  ESP OVERLAY — always renders when enabled
-        //  (draws behind UI, visible even when menu hidden)
-        // ═══════════════════════════════════════════════
         ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
-
         if (esp_boxes || esp_health || esp_distance || esp_skeleton)
         {
             float vm[16];
             uintptr_t vmBase = getBase() + OFS_VIEWMATRIX;
             for (int i = 0; i < 16; i++)
                 vm[i] = *(float *)(vmBase + i * 4);
-
             float lx = readFloat(OFS_PLAYER_X);
             float ly = readFloat(OFS_PLAYER_Y);
             float lz = readFloat(OFS_PLAYER_Z);
-
             uintptr_t entityList = *(uintptr_t *)(getBase() + OFS_ENTITYLIST);
             if (entityList) {
                 for (int i = 0; i < 100; i++) {
@@ -357,95 +377,41 @@ static bool MenDeal = false; // hidden by default, toggle with 3-finger double t
                 IM_COL32(255,255,255,120), 64, 1.5f);
         }
 
-        // ═══════════════════════════════════════════════
-        //  PATCH LOGIC
-        // ═══════════════════════════════════════════════
-
         if (move_jumphack) {
-            if (!move_j_active) {
-                vm(ENCRYPTOFFSET("0x543CF2"), strtoul(ENCRYPTHEX("0x360080D2"), nullptr, 0));
-                move_j_active = true;
-            }
-        } else if (move_j_active) {
-            vm(ENCRYPTOFFSET("0x543CF2"), strtoul(ENCRYPTHEX("0xF60302AA"), nullptr, 0));
-            move_j_active = false;
-        }
+            if (!move_j_active) { PatchMemory(OFS_JUMPHACK, 0x360080D2); move_j_active = true; }
+        } else if (move_j_active) { PatchMemory(OFS_JUMPHACK, 0xF60302AA); move_j_active = false; }
 
         if (move_parachute) {
-            if (!move_p_active) {
-                vm(ENCRYPTOFFSET("0x21992EC"), strtoul(ENCRYPTHEX("0x360080D2"), nullptr, 0));
-                move_p_active = true;
-            }
-        } else if (move_p_active) {
-            vm(ENCRYPTOFFSET("0x21992EC"), strtoul(ENCRYPTHEX("0xF60302AA"), nullptr, 0));
-            move_p_active = false;
-        }
+            if (!move_p_active) { PatchMemory(OFS_FASTPARACHUTE, 0x360080D2); move_p_active = true; }
+        } else if (move_p_active) { PatchMemory(OFS_FASTPARACHUTE, 0xF60302AA); move_p_active = false; }
 
         if (move_autoclimb) {
-            if (!move_c_active) {
-                vm(ENCRYPTOFFSET("0x5445B0"), strtoul(ENCRYPTHEX("0x360080D2"), nullptr, 0));
-                move_c_active = true;
-            }
-        } else if (move_c_active) {
-            vm(ENCRYPTOFFSET("0x5445B0"), strtoul(ENCRYPTHEX("0xF60302AA"), nullptr, 0));
-            move_c_active = false;
-        }
+            if (!move_c_active) { PatchMemory(OFS_AUTOCLIMB, 0x360080D2); move_c_active = true; }
+        } else if (move_c_active) { PatchMemory(OFS_AUTOCLIMB, 0xF60302AA); move_c_active = false; }
 
         if (move_walkthrough) {
-            if (!move_w_active) {
-                vm(ENCRYPTOFFSET("0x175EF68"), strtoul(ENCRYPTHEX("0x360080D2"), nullptr, 0));
-                move_w_active = true;
-            }
-        } else if (move_w_active) {
-            vm(ENCRYPTOFFSET("0x175EF68"), strtoul(ENCRYPTHEX("0xF60302AA"), nullptr, 0));
-            move_w_active = false;
-        }
+            if (!move_w_active) { PatchMemory(OFS_WALKTHROUGH, 0x360080D2); move_w_active = true; }
+        } else if (move_w_active) { PatchMemory(OFS_WALKTHROUGH, 0xF60302AA); move_w_active = false; }
 
         if (move_underwater) {
-            if (!move_u_active) {
-                vm(ENCRYPTOFFSET("0x396F8C"), strtoul(ENCRYPTHEX("0x360080D2"), nullptr, 0));
-                move_u_active = true;
-            }
-        } else if (move_u_active) {
-            vm(ENCRYPTOFFSET("0x396F8C"), strtoul(ENCRYPTHEX("0xF60302AA"), nullptr, 0));
-            move_u_active = false;
-        }
+            if (!move_u_active) { PatchMemory(OFS_UNDERWATER, 0x360080D2); move_u_active = true; }
+        } else if (move_u_active) { PatchMemory(OFS_UNDERWATER, 0xF60302AA); move_u_active = false; }
 
         if (misc_antispectate) {
-            if (!misc_a_active) {
-                vm(ENCRYPTOFFSET("0x12D486"), strtoul(ENCRYPTHEX("0x360080D2"), nullptr, 0));
-                misc_a_active = true;
-            }
-        } else if (misc_a_active) {
-            vm(ENCRYPTOFFSET("0x12D486"), strtoul(ENCRYPTHEX("0xF60302AA"), nullptr, 0));
-            misc_a_active = false;
-        }
+            if (!misc_a_active) { PatchMemory(OFS_ANTISPECTATE, 0x360080D2); misc_a_active = true; }
+        } else if (misc_a_active) { PatchMemory(OFS_ANTISPECTATE, 0xF60302AA); misc_a_active = false; }
 
         if (misc_grave) {
-            if (!misc_g_active) {
-                vm(ENCRYPTOFFSET("0x545018"), strtoul(ENCRYPTHEX("0x360080D2"), nullptr, 0));
-                misc_g_active = true;
-            }
-        } else if (misc_g_active) {
-            vm(ENCRYPTOFFSET("0x545018"), strtoul(ENCRYPTHEX("0xF60302AA"), nullptr, 0));
-            misc_g_active = false;
-        }
+            if (!misc_g_active) { PatchMemory(OFS_GRAVE, 0x360080D2); misc_g_active = true; }
+        } else if (misc_g_active) { PatchMemory(OFS_GRAVE, 0xF60302AA); misc_g_active = false; }
 
-        // Dobby hook — runs once
         static dispatch_once_t onceToken;
         dispatch_once(&onceToken, ^{
-            DobbyHook(
-                (void *)(getRealOffset(ENCRYPTOFFSET("0x5F145F8"))),
-                (void *)_huy, (void **)&huy);
+            DobbyHook((void *)(getRealOffset(0x5F145F8)), (void *)_huy, (void **)&huy);
         });
 
-        // ═══════════════════════════════════════════════
-        //  RENDER
-        // ═══════════════════════════════════════════════
         ImGui::Render();
-        ImDrawData* draw_data = ImGui::GetDrawData();
-        ImGui_ImplMetal_RenderDrawData(draw_data, commandBuffer, renderEncoder);
-
+        ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), commandBuffer, renderEncoder);
         [renderEncoder popDebugGroup];
         [renderEncoder endEncoding];
         [commandBuffer presentDrawable:view.currentDrawable];
@@ -453,46 +419,31 @@ static bool MenDeal = false; // hidden by default, toggle with 3-finger double t
     [commandBuffer commit];
 }
 
-- (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {}
-
 @end
 
 // ═══════════════════════════════════════════════════════
-//  CONSTRUCTOR — inject view into game window on load
+//  CONSTRUCTOR
 // ═══════════════════════════════════════════════════════
 __attribute__((constructor))
 static void InitModMenu() {
     dispatch_after(
-        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
+        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)),
         dispatch_get_main_queue(), ^{
-            UIWindow *window = [UIApplication sharedApplication].windows.firstObject;
+            UIWindow *window = nil;
+            if (@available(iOS 13.0, *)) {
+                for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                    if (scene.activationState == UISceneActivationStateForegroundActive) {
+                        window = scene.windows.firstObject;
+                        break;
+                    }
+                }
+            }
+            if (!window) window = [UIApplication sharedApplication].keyWindow;
             if (!window || !window.rootViewController) return;
-
             ImGuiDrawView *vc = [[ImGuiDrawView alloc] initWithNibName:nil bundle:nil];
             vc.view.frame = window.bounds;
             vc.view.backgroundColor = [UIColor clearColor];
-            vc.view.userInteractionEnabled = NO; // touches pass through by default
             vc.view.layer.zPosition = 1000;
-
-            // 3-finger double tap = show menu
-            UITapGestureRecognizer *showTap = [[UITapGestureRecognizer alloc]
-                initWithTarget:[ImGuiDrawView class]
-                action:@selector(handleShowMenu:)];
-            showTap.numberOfTapsRequired = 2;
-            showTap.numberOfTouchesRequired = 3;
-
-            // 2-finger double tap = hide menu
-            UITapGestureRecognizer *hideTap = [[UITapGestureRecognizer alloc]
-                initWithTarget:[ImGuiDrawView class]
-                action:@selector(handleHideMenu:)];
-            hideTap.numberOfTapsRequired = 2;
-            hideTap.numberOfTouchesRequired = 2;
-
-            // Add gestures to ROOT window — not the overlay view
-            // so they fire even when overlay userInteraction is off
-            [window addGestureRecognizer:showTap];
-            [window addGestureRecognizer:hideTap];
-
             [window.rootViewController addChildViewController:vc];
             [window.rootViewController.view addSubview:vc.view];
             [vc didMoveToParentViewController:window.rootViewController];
