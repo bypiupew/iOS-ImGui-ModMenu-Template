@@ -146,6 +146,12 @@ static bool MenDeal = false;
     hideTap.numberOfTouchesRequired = 2;
     hideTap.delegate = self;
     [self.view addGestureRecognizer:hideTap];
+
+    // Safely register hook during view load to prevent loading screen crashes
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        DobbyHook((void *)(getRealOffset(0x5F145F8)), (void *)_huy, (void **)&huy);
+    });
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
@@ -402,11 +408,6 @@ static bool MenDeal = false;
         if (misc_grave) {
             if (!misc_g_active) { PatchMemory(OFS_GRAVE, 0x360080D2); misc_g_active = true; }
         } else if (misc_g_active) { PatchMemory(OFS_GRAVE, 0xF60302AA); misc_g_active = false; }
-
-        static dispatch_once_t onceToken;
-        dispatch_once(&onceToken, ^{
-            DobbyHook((void *)(getRealOffset(0x5F145F8)), (void *)_huy, (void **)&huy);
-        });
 
         ImGui::Render();
         ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), commandBuffer, renderEncoder);
