@@ -58,11 +58,15 @@ static uintptr_t getBase() {
 }
 
 static float readFloat(uintptr_t offset) {
-    return *(float *)(getBase() + offset);
+    uintptr_t base = getBase();
+    if (!base) return 0.f;
+    return *(float *)(base + offset);
 }
 
 static void PatchMemory(uintptr_t offset, uint32_t instruction) {
-    uintptr_t targetAddress = getBase() + offset;
+    uintptr_t base = getBase();
+    if (!base) return;
+    uintptr_t targetAddress = base + offset;
     DobbyCodePatch((void *)targetAddress, (uint8_t *)&instruction, sizeof(instruction));
 }
 
@@ -84,7 +88,11 @@ static bool WorldToScreen(Vector3 pos, Vector2 &screen, float *vm, float w, floa
 @implementation ImGuiDrawView
 
 void (*huy)(void *instance);
-void _huy(void *instance) { huy(instance); }
+void _huy(void *instance) {
+    // Safety guard: prevent crashes if the hook fires during early asset loading before instance initialization
+    if (!instance) return;
+    huy(instance);
+}
 
 static bool MenDeal = false; 
 
@@ -147,10 +155,13 @@ static bool MenDeal = false;
     hideTap.delegate = self;
     [self.view addGestureRecognizer:hideTap];
 
-    // Safely register hook during view load to prevent loading screen crashes
+    // Safe initialization check for binary base offset before hooking
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        DobbyHook((void *)(getRealOffset(0x5F145F8)), (void *)_huy, (void **)&huy);
+        uintptr_t targetRealOffset = getRealOffset(0x5F145F8);
+        if (targetRealOffset) {
+            DobbyHook((void *)targetRealOffset, (void *)_huy, (void **)&huy);
+        }
     });
 }
 
@@ -316,60 +327,64 @@ static bool MenDeal = false;
         ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
         if (esp_boxes || esp_health || esp_distance || esp_skeleton)
         {
-            float vm[16];
-            uintptr_t vmBase = getBase() + OFS_VIEWMATRIX;
-            for (int i = 0; i < 16; i++)
-                vm[i] = *(float *)(vmBase + i * 4);
-            float lx = readFloat(OFS_PLAYER_X);
-            float ly = readFloat(OFS_PLAYER_Y);
-            float lz = readFloat(OFS_PLAYER_Z);
-            uintptr_t entityList = *(uintptr_t *)(getBase() + OFS_ENTITYLIST);
-            if (entityList) {
-                for (int i = 0; i < 100; i++) {
-                    uintptr_t entity = *(uintptr_t *)(entityList + i * 0x8);
-                    if (!entity) continue;
-                    float ex = *(float *)(entity + 0xDC);
-                    float ey = *(float *)(entity + 0xE0);
-                    float ez = *(float *)(entity + 0xE4);
-                    if (fabsf(ex) > 100000 || fabsf(ey) > 100000 || fabsf(ez) > 100000) continue;
-                    float dist = sqrtf(powf(ex-lx,2)+powf(ey-ly,2)+powf(ez-lz,2));
-                    if (dist > 800.f) continue;
-                    Vector3 feetPos = {ex, ey, ez};
-                    Vector3 headPos = {ex, ey + 1.8f, ez};
-                    Vector2 screenFeet, screenHead;
-                    if (!WorldToScreen(feetPos, screenFeet, vm, sw, sh)) continue;
-                    if (!WorldToScreen(headPos, screenHead, vm, sw, sh)) continue;
-                    float boxH = fabsf(screenFeet.y - screenHead.y);
-                    float boxW = boxH * 0.4f;
-                    if (esp_boxes) {
-                        draw_list->AddRect(
-                            ImVec2(screenHead.x - boxW/2, screenHead.y),
-                            ImVec2(screenHead.x + boxW/2, screenFeet.y),
-                            IM_COL32(255, 50, 50, 220), 0.f, 0, 2.0f);
-                    }
-                    if (esp_health) {
-                        float barX = screenHead.x - boxW/2 - 6.f;
-                        draw_list->AddRectFilled(
-                            ImVec2(barX-3, screenHead.y),
-                            ImVec2(barX,   screenFeet.y),
-                            IM_COL32(50,50,50,200));
-                        draw_list->AddRectFilled(
-                            ImVec2(barX-3, screenFeet.y - boxH),
-                            ImVec2(barX,   screenFeet.y),
-                            IM_COL32(50,255,50,220));
-                    }
-                    if (esp_distance) {
-                        char distStr[32];
-                        snprintf(distStr, sizeof(distStr), "%.0fm", dist);
-                        draw_list->AddText(
-                            ImVec2(screenHead.x - 12, screenFeet.y + 2),
-                            IM_COL32(255,255,255,220), distStr);
-                    }
-                    if (esp_skeleton) {
-                        draw_list->AddLine(
-                            ImVec2(screenHead.x, screenHead.y),
-                            ImVec2(screenFeet.x, screenFeet.y),
-                            IM_COL32(255,200,0,180), 1.5f);
+            uintptr_t vmBase = getBase();
+            if (vmBase) {
+                vmBase += OFS_VIEWMATRIX;
+                float vm[16];
+                for (int i = 0; i < 16; i++)
+                    vm[i] = *(float *)(vmBase + i * 4);
+                
+                float lx = readFloat(OFS_PLAYER_X);
+                float ly = readFloat(OFS_PLAYER_Y);
+                float lz = readFloat(OFS_PLAYER_Z);
+                uintptr_t entityList = *(uintptr_t *)(getBase() + OFS_ENTITYLIST);
+                if (entityList) {
+                    for (int i = 0; i < 100; i++) {
+                        uintptr_t entity = *(uintptr_t *)(entityList + i * 0x8);
+                        if (!entity) continue;
+                        float ex = *(float *)(entity + 0xDC);
+                        float ey = *(float *)(entity + 0xE0);
+                        float ez = *(float *)(entity + 0xE4);
+                        if (fabsf(ex) > 100000 || fabsf(ey) > 100000 || fabsf(ez) > 100000) continue;
+                        float dist = sqrtf(powf(ex-lx,2)+powf(ey-ly,2)+powf(ez-lz,2));
+                        if (dist > 800.f) continue;
+                        Vector3 feetPos = {ex, ey, ez};
+                        Vector3 headPos = {ex, ey + 1.8f, ez};
+                        Vector2 screenFeet, screenHead;
+                        if (!WorldToScreen(feetPos, screenFeet, vm, sw, sh)) continue;
+                        if (!WorldToScreen(headPos, screenHead, vm, sw, sh)) continue;
+                        float boxH = fabsf(screenFeet.y - screenHead.y);
+                        float boxW = boxH * 0.4f;
+                        if (esp_boxes) {
+                            draw_list->AddRect(
+                                ImVec2(screenHead.x - boxW/2, screenHead.y),
+                                ImVec2(screenHead.x + boxW/2, screenFeet.y),
+                                IM_COL32(255, 50, 50, 220), 0.f, 0, 2.0f);
+                        }
+                        if (esp_health) {
+                            float barX = screenHead.x - boxW/2 - 6.f;
+                            draw_list->AddRectFilled(
+                                ImVec2(barX-3, screenHead.y),
+                                ImVec2(barX,   screenFeet.y),
+                                IM_COL32(50,50,50,200));
+                            draw_list->AddRectFilled(
+                                ImVec2(barX-3, screenFeet.y - boxH),
+                                ImVec2(barX,   screenFeet.y),
+                                IM_COL32(50,255,50,220));
+                        }
+                        if (esp_distance) {
+                            char distStr[32];
+                            snprintf(distStr, sizeof(distStr), "%.0fm", dist);
+                            draw_list->AddText(
+                                ImVec2(screenHead.x - 12, screenFeet.y + 2),
+                                IM_COL32(255,255,255,220), distStr);
+                        }
+                        if (esp_skeleton) {
+                            draw_list->AddLine(
+                                ImVec2(screenHead.x, screenHead.y),
+                                ImVec2(screenFeet.x, screenFeet.y),
+                                IM_COL32(255,200,0,180), 1.5f);
+                        }
                     }
                 }
             }
