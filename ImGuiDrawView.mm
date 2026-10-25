@@ -176,11 +176,9 @@ static bool MenDeal = false;
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event{ [self updateIOWithTouchEvent:event]; }
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event    { [self updateIOWithTouchEvent:event]; }
 
-// Dynamic hit testing to allow simultaneous menu usage and gameplay clicks
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     if (!MenDeal) return nil; 
 
-    // Look inside ImGui context to see if touch falls inside active windows
     ImGuiContext* g = ImGui::GetCurrentContext();
     if (g) {
         for (int i = 0; i < g->Windows.Size; i++) {
@@ -190,12 +188,12 @@ static bool MenDeal = false;
                 ImVec2 size = window->Size;
                 CGRect windowRect = CGRectMake(pos.x, pos.y, size.x, size.y);
                 if (CGRectContainsPoint(windowRect, point)) {
-                    return [self.view hitTest:point withEvent:event]; // Forward interaction to ImGui
+                    return [self.view hitTest:point withEvent:event];
                 }
             }
         }
     }
-    return nil; // Pass touch straight down to game window if outside the UI window bounds
+    return nil;
 }
 
 #pragma mark - MTKViewDelegate
@@ -450,5 +448,3 @@ static void InitModMenu() {
         }
     );
 }
-
-@end
