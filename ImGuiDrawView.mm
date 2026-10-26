@@ -87,12 +87,6 @@ static bool WorldToScreen(Vector3 pos, Vector2 &screen, float *vm, float w, floa
 
 @implementation ImGuiDrawView
 
-void (*huy)(void *instance);
-void _huy(void *instance) {
-    if (!instance) return;
-    huy(instance);
-}
-
 static bool MenDeal = false; 
 
 - (instancetype)initWithNibName:(nullable NSString *)nibNameOrNil bundle:(nullable NSBundle *)nibBundleOrNil
@@ -168,14 +162,6 @@ static bool MenDeal = false;
     hideTap.numberOfTouchesRequired = 2;
     hideTap.delegate = self;
     [self.view addGestureRecognizer:hideTap];
-
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        uintptr_t targetRealOffset = getRealOffset(0x5F145F8);
-        if (targetRealOffset) {
-            DobbyHook((void *)targetRealOffset, (void *)_huy, (void **)&huy);
-        }
-    });
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
@@ -462,7 +448,7 @@ static bool MenDeal = false;
 __attribute__((constructor))
 static void InitModMenu() {
     dispatch_after(
-        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.0 * NSEC_PER_SEC)),
+        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)),
         dispatch_get_main_queue(), ^{
             UIWindow *targetWindow = nil;
             if (@available(iOS 13.0, *)) {
@@ -494,8 +480,7 @@ static void InitModMenu() {
                 [targetWindow.rootViewController.view addSubview:vc.view];
                 [vc didMoveToParentViewController:targetWindow.rootViewController];
             } else {
-                // Fallback loop if UIWindow is not fully initialized at 6s
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                     UIWindow *fallbackWindow = [UIApplication sharedApplication].keyWindow;
                     if (fallbackWindow && fallbackWindow.rootViewController) {
                         ImGuiDrawView *vc = [[ImGuiDrawView alloc] initWithNibName:nil bundle:nil];
