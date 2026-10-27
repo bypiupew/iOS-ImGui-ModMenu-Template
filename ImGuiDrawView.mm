@@ -204,7 +204,7 @@ static bool MenDeal = false;
                 ImVec2 size = window->Size;
                 CGRect windowRect = CGRectMake(pos.x, pos.y, size.x, size.y);
                 if (CGRectContainsPoint(windowRect, point)) {
-                    return [self.view hitTest:point withEvent:event];
+                    return [super hitTest:point withEvent:event];
                 }
             }
         }
