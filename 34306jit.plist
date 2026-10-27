@@ -6,7 +6,7 @@
 	<dict>
 		<key>Bundles</key>
 		<array>
-			<string>ros.legacy.ios</string>
+			<string>com.netease.chiji</string>
 		</array>
 	</dict>
 </dict>
