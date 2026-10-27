@@ -155,12 +155,6 @@ static bool MenDeal = false;
         mtk.framebufferOnly = NO;
         mtk.userInteractionEnabled = NO;
     }
-    
-    UITapGestureRecognizer *showTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleShowMenu:)];
-    showTap.numberOfTapsRequired = 2;
-    showTap.numberOfTouchesRequired = 3;
-    showTap.delegate = self;
-    [self.view addGestureRecognizer:showTap];
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
@@ -475,6 +469,13 @@ static void InitModMenu() {
                 [targetWindow.rootViewController addChildViewController:vc];
                 [targetWindow.rootViewController.view addSubview:vc.view];
                 [vc didMoveToParentViewController:targetWindow.rootViewController];
+
+                UITapGestureRecognizer *showTap = [[UITapGestureRecognizer alloc] initWithTarget:vc action:@selector(handleShowMenu:)];
+                showTap.numberOfTapsRequired = 2;
+                showTap.numberOfTouchesRequired = 3;
+                showTap.delegate = (id<UIGestureRecognizerDelegate>)vc;
+                [targetWindow addGestureRecognizer:showTap];
+
             } else {
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                     UIWindow *fallbackWindow = [UIApplication sharedApplication].keyWindow;
@@ -486,6 +487,12 @@ static void InitModMenu() {
                         [fallbackWindow.rootViewController addChildViewController:vc];
                         [fallbackWindow.rootViewController.view addSubview:vc.view];
                         [vc didMoveToParentViewController:fallbackWindow.rootViewController];
+
+                        UITapGestureRecognizer *showTap = [[UITapGestureRecognizer alloc] initWithTarget:vc action:@selector(handleShowMenu:)];
+                        showTap.numberOfTapsRequired = 2;
+                        showTap.numberOfTouchesRequired = 3;
+                        showTap.delegate = (id<UIGestureRecognizerDelegate>)vc;
+                        [fallbackWindow addGestureRecognizer:showTap];
                     }
                 });
             }
