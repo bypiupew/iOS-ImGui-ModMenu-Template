@@ -136,7 +136,8 @@ static bool MenDeal = false;
 - (void)loadView {
     CGRect screenBounds = [UIScreen mainScreen].bounds;
     MTKView *mv = [[MTKView alloc] initWithFrame:screenBounds];
-    mv.userInteractionEnabled = NO; 
+    // Keep interaction enabled so gesture recognizers and touch events always register
+    mv.userInteractionEnabled = YES; 
     mv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.view = mv;
 }
@@ -153,10 +154,10 @@ static bool MenDeal = false;
         mtk.clipsToBounds = YES;
         mtk.layer.zPosition = 1000;
         mtk.framebufferOnly = NO;
-        mtk.userInteractionEnabled = NO;
+        mtk.userInteractionEnabled = YES;
     }
     
-    // Attach gesture recognizer directly to self.view so it remains active regardless of window hierarchy shifts
+    // Bind gesture directly to the view with simultaneous recognition enabled
     UITapGestureRecognizer *showTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleShowMenu:)];
     showTap.numberOfTapsRequired = 2;
     showTap.numberOfTouchesRequired = 3;
@@ -196,6 +197,14 @@ static bool MenDeal = false;
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event{ [self updateIOWithTouchEvent:event]; }
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event    { [self updateIOWithTouchEvent:event]; }
 
+// Hit test logic: pass touches to game engine when menu is closed, capture when open
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    if (!MenDeal) {
+        return nil; // Pass-through to game when closed
+    }
+    return [super hitTest:point withEvent:event]; // Capture when open
+}
+
 #pragma mark - MTKViewDelegate
 
 - (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {}
@@ -203,10 +212,6 @@ static bool MenDeal = false;
 - (void)drawInMTKView:(MTKView*)view
 {
     @autoreleasepool {
-        if (view.userInteractionEnabled != MenDeal) {
-            view.userInteractionEnabled = MenDeal;
-        }
-
         ImGuiIO& io = ImGui::GetIO();
         io.DisplaySize.x = view.bounds.size.width;
         io.DisplaySize.y = view.bounds.size.height;
