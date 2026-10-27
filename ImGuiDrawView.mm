@@ -120,11 +120,7 @@ static bool MenDeal = false;
 }
 
 - (void)handleShowMenu:(UITapGestureRecognizer *)gesture {
-    MenDeal = YES;
-}
-
-- (void)handleHideMenu:(UITapGestureRecognizer *)gesture {
-    MenDeal = NO;
+    MenDeal = !MenDeal; // Toggle menu state cleanly on gesture
 }
 
 - (MTKView *)mtkView { return (MTKView *)self.view; }
@@ -132,7 +128,8 @@ static bool MenDeal = false;
 - (void)loadView {
     CGRect screenBounds = [UIScreen mainScreen].bounds;
     MTKView *mv = [[MTKView alloc] initWithFrame:screenBounds];
-    mv.userInteractionEnabled = YES; 
+    // CRITICAL: Disable userInteraction by default so game receives inputs, enable only when menu is active
+    mv.userInteractionEnabled = NO; 
     mv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.view = mv;
 }
@@ -149,26 +146,26 @@ static bool MenDeal = false;
         mtk.clipsToBounds = YES;
         mtk.layer.zPosition = 1000;
         mtk.framebufferOnly = NO;
+        mtk.userInteractionEnabled = NO; // Let touches pass through to game engine by default
     }
     
     UITapGestureRecognizer *showTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleShowMenu:)];
     showTap.numberOfTapsRequired = 2;
     showTap.numberOfTouchesRequired = 3;
     showTap.delegate = self;
-    [self.view addGestureRecognizer:showTap];
+    // Attach to the application window or view controller container instead of blocking the MTKView
+    [[UIApplication sharedApplication].keyWindow addGestureRecognizer:showTap];
+}
 
-    UITapGestureRecognizer *hideTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleHideMenu:)];
-    hideTap.numberOfTapsRequired = 2;
-    hideTap.numberOfTouchesRequired = 2;
-    hideTap.delegate = self;
-    [self.view addGestureRecognizer:hideTap];
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
+    return YES;
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
     return YES;
 }
 
-#pragma mark - Touch passthrough
+#pragma mark - Touch passthrough handling
 
 - (void)updateIOWithTouchEvent:(UIEvent *)event
 {
@@ -199,6 +196,11 @@ static bool MenDeal = false;
 - (void)drawInMTKView:(MTKView*)view
 {
     @autoreleasepool {
+        // Dynamically toggle interaction based on whether the menu is open
+        if (view.userInteractionEnabled != MenDeal) {
+            view.userInteractionEnabled = MenDeal;
+        }
+
         ImGuiIO& io = ImGui::GetIO();
         io.DisplaySize.x = view.bounds.size.width;
         io.DisplaySize.y = view.bounds.size.height;
