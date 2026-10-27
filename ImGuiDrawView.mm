@@ -46,6 +46,7 @@
 #define OFS_ANTISPECTATE    0x12D486
 #define OFS_GRAVE           0x545018
 #define OFS_UNDERWATER      0x396F8C
+#define OFS_ANTICHEAT_CHECK 0x18F4200 // Anti-cheat file/signature validation entry
 
 // ═══════════════════════════════════════════════════════
 //  WORLD TO SCREEN
@@ -70,6 +71,12 @@ static void PatchMemory(uintptr_t offset, uint32_t instruction) {
     if (!base) return;
     uintptr_t targetAddress = base + offset;
     DobbyCodePatch((void *)targetAddress, (uint8_t *)&instruction, sizeof(instruction));
+}
+
+// Hook/stub to force anti-cheat validation function to always return 0 (Clean / No modification)
+static int (*orig_anticheat_check)(void *self);
+static int replacement_anticheat_check(void *self) {
+    return 0; // Force status: CLEAN
 }
 
 static bool WorldToScreen(Vector3 pos, Vector2 &screen, float *vm, float w, float h) {
@@ -424,18 +431,22 @@ static bool MenDeal = false;
 @end
 
 // ═══════════════════════════════════════════════════════
-//  CONSTRUCTOR & INTEGRITY EVASION
+//  CONSTRUCTOR & BYPASS HOOK
 // ═══════════════════════════════════════════════════════
 __attribute__((constructor))
 static void InitModMenu() {
-    // Unlink loaded dylib name from dyld loaded image list inspection if scanned
-    Dl_info info;
-    if (dladdr((void *)&InitModMenu, &info) != 0) {
-        // Obfuscate module path references to evade signature checks
-    }
+    static dispatch_once_t antiCheatOnce;
+    dispatch_once(&antiCheatOnce, ^{
+        uintptr_t base = getBase();
+        if (base) {
+            // Hook the anti-cheat verification check to short-circuit and return 0 (clean)
+            void *checkTarget = (void *)(base + OFS_ANTICHEAT_CHECK);
+            DobbyHook(checkTarget, (void *)replacement_anticheat_check, (void **)&orig_anticheat_check);
+        }
+    });
 
     dispatch_after(
-        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)),
+        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)),
         dispatch_get_main_queue(), ^{
             UIWindow *targetWindow = nil;
             if (@available(iOS 13.0, *)) {
@@ -467,7 +478,7 @@ static void InitModMenu() {
                 [targetWindow.rootViewController.view addSubview:vc.view];
                 [vc didMoveToParentViewController:targetWindow.rootViewController];
             } else {
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                     UIWindow *fallbackWindow = [UIApplication sharedApplication].keyWindow;
                     if (fallbackWindow && fallbackWindow.rootViewController) {
                         ImGuiDrawView *vc = [[ImGuiDrawView alloc] initWithNibName:nil bundle:nil];
