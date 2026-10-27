@@ -105,7 +105,7 @@ static bool MenDeal = false;
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     ImGui::StyleColorsDark();
     
-    if (Honkai_compressed_data && Honkai_compressed_size > 0) {
+    if (Honkai_compressed_size > 0) {
         io.Fonts->AddFontFromMemoryCompressedTTF(
             (void*)Honkai_compressed_data, Honkai_compressed_size,
             38.0f, NULL, io.Fonts->GetGlyphRangesDefault());
@@ -191,26 +191,6 @@ static bool MenDeal = false;
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event    { [self updateIOWithTouchEvent:event]; }
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event{ [self updateIOWithTouchEvent:event]; }
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event    { [self updateIOWithTouchEvent:event]; }
-
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-    if (!MenDeal) return nil; 
-
-    ImGuiContext* g = ImGui::GetCurrentContext();
-    if (g) {
-        for (int i = 0; i < g->Windows.Size; i++) {
-            ImGuiWindow* window = g->Windows[i];
-            if (window && window->WasActive && !window->Hidden) {
-                ImVec2 pos = window->Pos;
-                ImVec2 size = window->Size;
-                CGRect windowRect = CGRectMake(pos.x, pos.y, size.x, size.y);
-                if (CGRectContainsPoint(windowRect, point)) {
-                    return [super hitTest:point withEvent:event];
-                }
-            }
-        }
-    }
-    return nil;
-}
 
 #pragma mark - MTKViewDelegate
 
