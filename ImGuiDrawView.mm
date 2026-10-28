@@ -26,7 +26,7 @@
 #define kScale  [UIScreen mainScreen].scale
 
 // ═══════════════════════════════════════════════════════
-//  OFFSET MAP — MyBattleRoyale (client binary)
+//  OFFSET MAP — MyBattleRoyale / RoS Legacy
 // ═══════════════════════════════════════════════════════
 #define OFS_VIEWMATRIX      0x1ED79B0
 #define OFS_LOCALPLAYER     0x20E435C
@@ -73,9 +73,10 @@ static void PatchMemory(uintptr_t offset, uint32_t instruction) {
     DobbyCodePatch((void *)targetAddress, (uint8_t *)&instruction, sizeof(instruction));
 }
 
+// Anti-cheat bypass: return 1 (clean / pass status) to ensure game doesn't block rendering
 static int (*orig_anticheat_check)(void *self);
 static int replacement_anticheat_check(void *self) {
-    return 0;
+    return 1;
 }
 
 static bool WorldToScreen(Vector3 pos, Vector2 &screen, float *vm, float w, float h) {
@@ -151,7 +152,7 @@ static bool MenDeal = false;
         mtk.clearColor = MTLClearColorMake(0, 0, 0, 0);
         mtk.backgroundColor = [UIColor clearColor];
         mtk.clipsToBounds = YES;
-        mtk.layer.zPosition = 1000;
+        mtk.layer.zPosition = 999999; // Ensure top drawing layer
         mtk.framebufferOnly = NO;
         mtk.userInteractionEnabled = NO;
     }
@@ -265,7 +266,7 @@ static bool MenDeal = false;
                     ImGui::PushStyleColor(ImGuiCol_Tab,           ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
                     ImGui::PushStyleColor(ImGuiCol_TabActive,     ImVec4(0.8f, 0.1f, 0.1f, 1.0f));
 
-                    ImGui::Begin("ROS MOD MENU | 3-Finger Double Tap", &MenDeal);
+                    ImGui::Begin("ROS MOD MENU | 3-Finger Triple Tap", &MenDeal);
                     ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
                     ImGui::Separator();
 
@@ -424,7 +425,7 @@ static bool MenDeal = false;
 @end
 
 // ═══════════════════════════════════════════════════════
-//  CONSTRUCTOR & BYPASS HOOK
+//  CONSTRUCTOR & BYPASS HOOK (FORCED FRONT-WINDOW Z-ORDER)
 // ═══════════════════════════════════════════════════════
 __attribute__((constructor))
 static void InitModMenu() {
@@ -461,40 +462,29 @@ static void InitModMenu() {
                 targetWindow = [UIApplication sharedApplication].keyWindow;
             }
             
+            if (!targetWindow && [UIApplication sharedApplication].windows.count > 0) {
+                targetWindow = [UIApplication sharedApplication].windows[0];
+            }
+
             if (targetWindow && targetWindow.rootViewController) {
                 ImGuiDrawView *vc = [[ImGuiDrawView alloc] initWithNibName:nil bundle:nil];
                 vc.view.frame = targetWindow.bounds;
                 vc.view.backgroundColor = [UIColor clearColor];
-                vc.view.layer.zPosition = 1000;
+                vc.view.layer.zPosition = 999999;
+                
                 [targetWindow.rootViewController addChildViewController:vc];
                 [targetWindow.rootViewController.view addSubview:vc.view];
+                [targetWindow.rootViewController.view bringSubviewToFront:vc.view]; // Forces view to absolute front
                 [vc didMoveToParentViewController:targetWindow.rootViewController];
 
+                // 3-Finger Triple Tap gesture binding
                 UITapGestureRecognizer *showTap = [[UITapGestureRecognizer alloc] initWithTarget:vc action:@selector(handleShowMenu:)];
-                showTap.numberOfTapsRequired = 2;
-                showTap.numberOfTouchesRequired = 3;
+                showTap.numberOfTapsRequired = 3;     // Triple tap
+                showTap.numberOfTouchesRequired = 3;  // 3 fingers
+                showTap.cancelsTouchesInView = NO;
+                showTap.delaysTouchesBegan = NO;
                 showTap.delegate = (id<UIGestureRecognizerDelegate>)vc;
                 [targetWindow addGestureRecognizer:showTap];
-
-            } else {
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    UIWindow *fallbackWindow = [UIApplication sharedApplication].keyWindow;
-                    if (fallbackWindow && fallbackWindow.rootViewController) {
-                        ImGuiDrawView *vc = [[ImGuiDrawView alloc] initWithNibName:nil bundle:nil];
-                        vc.view.frame = fallbackWindow.bounds;
-                        vc.view.backgroundColor = [UIColor clearColor];
-                        vc.view.layer.zPosition = 1000;
-                        [fallbackWindow.rootViewController addChildViewController:vc];
-                        [fallbackWindow.rootViewController.view addSubview:vc.view];
-                        [vc didMoveToParentViewController:fallbackWindow.rootViewController];
-
-                        UITapGestureRecognizer *showTap = [[UITapGestureRecognizer alloc] initWithTarget:vc action:@selector(handleShowMenu:)];
-                        showTap.numberOfTapsRequired = 2;
-                        showTap.numberOfTouchesRequired = 3;
-                        showTap.delegate = (id<UIGestureRecognizerDelegate>)vc;
-                        [fallbackWindow addGestureRecognizer:showTap];
-                    }
-                });
             }
         }
     );
