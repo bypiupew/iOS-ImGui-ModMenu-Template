@@ -19,7 +19,6 @@
 #import "5Toubun/NakanoMiku.h"
 #import "5Toubun/NakanoYotsuba.h"
 #import "5Toubun/NakanoItsuki.h"
-#import "5Toubun/dobby.h"
 
 #define kWidth  [UIScreen mainScreen].bounds.size.width
 #define kHeight [UIScreen mainScreen].bounds.size.height
@@ -46,7 +45,6 @@
 #define OFS_ANTISPECTATE    0x12D486
 #define OFS_GRAVE           0x545018
 #define OFS_UNDERWATER      0x396F8C
-#define OFS_ANTICHEAT_CHECK 0x18F4200
 
 // ═══════════════════════════════════════════════════════
 //  WORLD TO SCREEN
@@ -70,13 +68,13 @@ static void PatchMemory(uintptr_t offset, uint32_t instruction) {
     uintptr_t base = getBase();
     if (!base) return;
     uintptr_t targetAddress = base + offset;
-    DobbyCodePatch((void *)targetAddress, (uint8_t *)&instruction, sizeof(instruction));
-}
-
-// Anti-cheat bypass: return 1 (clean / pass status) to ensure game doesn't block rendering
-static int (*orig_anticheat_check)(void *self);
-static int replacement_anticheat_check(void *self) {
-    return 1;
+    // Direct memory patch without blocking hooks
+    mach_port_t self = mach_task_self();
+    vm_prot_t oldProt;
+    if (vm_protect(self, (vm_address_t)(targetAddress & ~0xFFF), 0x4000, 0, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY) == KERN_SUCCESS) {
+        *(uint32_t *)targetAddress = instruction;
+        vm_protect(self, (vm_address_t)(targetAddress & ~0xFFF), 0x4000, 0, oldProt);
+    }
 }
 
 static bool WorldToScreen(Vector3 pos, Vector2 &screen, float *vm, float w, float h) {
@@ -152,7 +150,7 @@ static bool MenDeal = false;
         mtk.clearColor = MTLClearColorMake(0, 0, 0, 0);
         mtk.backgroundColor = [UIColor clearColor];
         mtk.clipsToBounds = YES;
-        mtk.layer.zPosition = 999999; // Ensure top drawing layer
+        mtk.layer.zPosition = 999999;
         mtk.framebufferOnly = NO;
         mtk.userInteractionEnabled = NO;
     }
@@ -425,19 +423,10 @@ static bool MenDeal = false;
 @end
 
 // ═══════════════════════════════════════════════════════
-//  CONSTRUCTOR & BYPASS HOOK (FORCED FRONT-WINDOW Z-ORDER)
+//  CONSTRUCTOR (CLEAN INITIALIZATION & 3-FINGER TRIPLE TAP)
 // ═══════════════════════════════════════════════════════
 __attribute__((constructor))
 static void InitModMenu() {
-    static dispatch_once_t antiCheatOnce;
-    dispatch_once(&antiCheatOnce, ^{
-        uintptr_t base = getBase();
-        if (base) {
-            void *checkTarget = (void *)(base + OFS_ANTICHEAT_CHECK);
-            DobbyHook(checkTarget, (void *)replacement_anticheat_check, (void **)&orig_anticheat_check);
-        }
-    });
-
     dispatch_after(
         dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)),
         dispatch_get_main_queue(), ^{
@@ -474,7 +463,7 @@ static void InitModMenu() {
                 
                 [targetWindow.rootViewController addChildViewController:vc];
                 [targetWindow.rootViewController.view addSubview:vc.view];
-                [targetWindow.rootViewController.view bringSubviewToFront:vc.view]; // Forces view to absolute front
+                [targetWindow.rootViewController.view bringSubviewToFront:vc.view];
                 [vc didMoveToParentViewController:targetWindow.rootViewController];
 
                 // 3-Finger Triple Tap gesture binding
